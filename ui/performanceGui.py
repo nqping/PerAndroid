@@ -7,12 +7,12 @@
 
 import time, sys
 from PyQt5.QtGui import *
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, Qt, QMetaObject
-from PyQt5.QtWidgets import QLayout, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QCheckBox, QMainWindow, QLineEdit, \
-    QMessageBox, QGroupBox, QTreeView, QApplication, QLabel, QAction
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
 from framework.adb_tool.adb_async import Adb
 from framework.adb_tool.excetion import *
 from utils import utils
+from tablib import Dataset
 import logging
 
 
@@ -240,20 +240,16 @@ class PerformnaceAppUi(QWidget):
             self.exportBtn.setEnabled(False)
             self.exportBtn.clicked.connect(self.onExport)
             _hLayout.addWidget(self.exportBtn)
-
         self.clearBtn = QPushButton('清空')
         self.clearBtn.clicked.connect(self.onClearModels)
         _hLayout.addWidget(self.clearBtn)
-
         self.exitBtn = QPushButton('停止')
         self.exitBtn.clicked.connect(self.abortWorkers)
         _hLayout.addWidget(self.exitBtn)
-
         self.resetBtn = QPushButton('重置')
         self.resetBtn.clicked.connect(self.onReset)
         self.resetBtn.setEnabled(False)
         _hLayout.addWidget(self.resetBtn)
-
         _timeLayout = QHBoxLayout()
         self._start_time = time.time()
         self._startLabel = QLabel('开始 :' + time.strftime('%H:%M:%S', time.localtime()))
@@ -267,7 +263,6 @@ class PerformnaceAppUi(QWidget):
 
         groupBox = QGroupBox('性能')
         self._treeView = QTreeView()
-        self._treeView.setObjectName('treeView')
         self._treeView.setRootIsDecorated(True)
         self._treeView.setAutoScroll(True)
         self._treeView.setAlternatingRowColors(True)
@@ -282,9 +277,31 @@ class PerformnaceAppUi(QWidget):
         self._treeView.setModel(self._model)
         self.setLayout(_hLayout)
         self.setLayout(_timeLayout)
-        self.setLayout(groupBox)
+        # self.layout.addWidget(groupBox)
+        _hLayout.addWidget(groupBox)
+
         if self._networkIndex > 0:
             self.startTotalLabel.setText('初始流量 :0k')
+
+    def startThreads(self, data):
+        worker = Worker(1)
+        worker.setData(data)
+        thread = QThread()
+        worker.moveToThread(thread)
+        worker.sigStep.connect(self.onWorkerStep)
+        worker.sigInit.connect(self.onInitCompleted)
+        worker.sigAdbErr.connect(self.onAdbErr)
+        thread.started.connect(worker.work)
+        thread.start()
+        self.thread = thread
+        self.worker = worker
+
+    def onInitCompleted(self):
+        print('数据初始化结束!!!')
+
+    @pyqtSlot(list)
+    def onWorkerStep(self, items: list):
+        self.addModel(items)
 
 
     def onReset(self):
@@ -315,6 +332,28 @@ class PerformnaceAppUi(QWidget):
 
         self.worker.abort()
         self.thread.quit()
+
+    def onAdbErr(self, err):
+        if self._message_box_count > 0:
+            return
+        self._message_box_count += 1
+        reply = QMessageBox.question(self, 'adb连接错误!', err, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            self._message_box_count -= 1
+
+    def onExport(self):
+        try:
+            data = Dataset(*self._items, **{'headers': self._titleLine})
+            fileName = time.strftime('%m-%d-%H_%M_%S', time.localtime()) + '-performance.xls'
+            with open(fileName, 'wb') as (f):
+                f.write(data.export('xls'))
+                QMessageBox.information(self, '导出成功!', 'Excel文件名为' + fileName)
+        except Exception as err:
+            try:
+                QMessageBox.warning(self, '导出异常!', str(err))
+            finally:
+                err = None
+                del err
 
 
 
