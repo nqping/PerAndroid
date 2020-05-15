@@ -1,0 +1,327 @@
+#!/usr/bin/sh python
+# -*- coding: utf-8 -*-
+# @Time : 2020/5/15 10:01 
+# @Author : qingping.niu
+# @File : performanceGui.py 
+# @Desc : 性能监控测试
+
+import time, sys
+from PyQt5.QtGui import *
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, Qt, QMetaObject
+from PyQt5.QtWidgets import QLayout, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QCheckBox, QMainWindow, QLineEdit, \
+    QMessageBox, QGroupBox, QTreeView, QApplication, QLabel, QAction
+from framework.adb_tool.adb_async import Adb
+from framework.adb_tool.excetion import *
+from utils import utils
+import logging
+
+
+log = logging.getLogger('performance')
+
+
+adb = Adb.create()
+CPU = 'cpu(%)'
+FPS = 'fps(ms)'
+MEMORY = '内存(k)'
+NETWORK = '流量(k)'
+BATTERY = '电量(%)'
+TEMPERATURE = '温度(℃)'
+TOTAL_MEMORY = '总内存(k)'
+TOTAL_CPU = '总CPU(%)'
+NETWORK_ALL = '网速(k/s)'
+COUNT = 10
+NAMES = {CPU: 'cpu',
+ FPS: 'fps',
+ MEMORY: 'memory',
+ NETWORK: 'network',
+ BATTERY: 'battery',
+ TEMPERATURE: 'temperature',
+ TOTAL_MEMORY: 'total_memory',
+ TOTAL_CPU: 'total_cpu',
+ NETWORK_ALL: 'network_all_speed'}
+F_NAMES = {'cpu':CPU,
+ 'fps':FPS,
+ 'memory':MEMORY,
+ 'network_wifi':'应用总流量(k)',
+ 'network_local':'应用总流量(k)',
+ 'network_wifi_speed':'应用网速(k/s)',
+ 'network_local_speed':'应用网速(k/s)',
+ 'network_all_speed':NETWORK_ALL,
+ 'battery':BATTERY,
+ 'temperature':TEMPERATURE,
+ 'timestamp':'时间(h:m:s)',
+ 'curActivity':'当前页面',
+ 'total_memory':TOTAL_MEMORY,
+ 'total_cpu':TOTAL_CPU}
+
+def trap_exc_during_debug(*args):
+    print(args)
+    log.debug(args)
+
+sys.excepthook = trap_exc_during_debug #全局捕获未处理的异常
+
+def clearLayout(layout):
+    while layout.count() > 0:
+        item = layout.takeAt(0)
+        if not item:
+            continue
+        if isinstance(item, QLayout):
+            clearLayout(item)
+        w = item.widget()
+        if w:
+            w.close()
+
+class Worker(QObject):
+    """
+    必须从QObject派生，以便发出信号，将插槽连接到其他信号，并在QThread中操作。
+    """
+    __module__ = __name__
+    __qualname__ = 'Worker'
+    sigStep = pyqtSignal(list)
+    sigAdbErr = pyqtSignal(str)
+    sigInit = pyqtSignal()
+
+    def __init__(self, id):
+        super().__init__()
+        self._Worker__id = id
+        self._Worker__abort = False
+        self._Worker__data = None
+        self._thread = None
+
+    @pyqtSlot()
+    def work(self):
+        """
+        假设这个工作方法工作了很长时间。在此期间，线程的
+        事件循环被阻塞，除非应用程序的processEvents()被调用:这将给出每个
+        线程(包括main)处理事件的机会，在本例中意味着处理信号
+        从GUI接收(例如abort)。
+        """
+        items, pkg, serial = self._Worker__data
+        adb.serial = serial
+        print('数据初始化中...')
+        if adb.cpuHasRun:
+            adb.cpuHasRun = False
+            time.sleep(1)
+        adb.runCPU(pkg)
+        for step in range(1000000):
+            _start_time = time.time()
+            try:
+                arr = [getattr(adb, it)(pkg) for it in items]
+                if step > 1:
+                    self.sigStep.emit(arr)
+                elif step == 1:
+                    print('checking...')
+                    self.sigInit.emit()
+                if adb.adbErr:
+                    self.sigAdbErr.emit(str(adb.adbErr))
+                    adb.adbErr = ''
+            except AdbError as err:
+                try:
+                    self.sigAdbErr.emit(str(err))
+                finally:
+                    err = None
+                    del err
+
+            app.processEvents()
+            if self._Worker__abort:
+                break
+            _offset = time.time() - _start_time
+            if _offset < 1:
+                time.sleep(1 - _offset)
+            if self._Worker__abort:
+                break
+
+    def abort(self):
+        self._Worker__abort = True
+
+    def setData(self, data):
+        self._Worker__data = data
+
+
+class PerformnaceAppUi(QWidget):
+    def __init__(self):
+        super().__init__()
+        self._options = {}
+        self._count = 0
+        self._size = 0
+        self._netType = '_wifi'
+        self._message_box_count = 0
+        self._lastTotal = 0
+        self._export = None
+        self._items = []
+        self._last_adb_err_time = 0
+
+        self.resize(600, 200)
+        self.setWindowTitle('性能监控')
+        self.setOptionLayout()
+
+    def setOptionLayout(self):
+        self._titleLayout = QVBoxLayout()
+        self.newCheckBtn(CPU, NETWORK)
+        self.newCheckBtn(FPS, BATTERY)
+        self.newCheckBtn(MEMORY, TEMPERATURE)
+        self.newCheckBtn(TOTAL_MEMORY, TOTAL_CPU)
+        self.newInput()
+        _hLayout = QHBoxLayout()
+        _checkbox = QCheckBox('导出Excel文件', self)
+        _checkbox.stateChanged.connect(self.onExportChanged)
+        _hLayout.addWidget(_checkbox)
+        self._titleLayout.addLayout(_hLayout)
+        btn = QPushButton('开始')
+        btn.clicked.connect(self.onStart)
+        self._titleLayout.addWidget(btn)
+        self.setLayout(self._titleLayout)
+
+    def newInput(self):
+        layout = QHBoxLayout()
+        self._App__pkg_edit = QLineEdit()
+        self._App__pkg_edit.setPlaceholderText('包名')
+        self._App__serial_edit = QLineEdit()
+        self._App__serial_edit.setPlaceholderText('设备号(单设备,可不输)')
+        layout.addWidget(self._App__pkg_edit)
+        layout.addWidget(self._App__serial_edit)
+        self._titleLayout.addLayout(layout)
+
+    def newCheckBtn(self, name1, name2):
+        layout = QHBoxLayout()
+        btn = QPushButton(name1)
+        btn.setCheckable(True)
+        btn.clicked[bool].connect(self.onNetworkCheck)
+        layout.addWidget(btn)
+        btn2 = QPushButton(name2)
+        btn2.setCheckable(True)
+        btn2.clicked[bool].connect(self.onNetworkCheck)
+        layout.addWidget(btn2)
+        self._titleLayout.addLayout(layout)
+
+    def onNetworkCheck(self, pressed):
+        source = self.sender()
+        name = NAMES[source.text()]
+        self._options[name] = pressed
+
+    def onExportChanged(self, state):
+        self._export = state
+
+    def onStart(self):
+        items = [k if k != 'network' else k + self._netType for k, v in self._options.items() if v]
+        _it = 'network' + self._netType
+        self._networkIndex = utils.listFind(items, _it) + 1
+        print(self._networkIndex)
+        self._fpsIndex = utils.listFind(items, 'fps') + 1
+        if self._networkIndex > 0:
+            items.append(_it + '_speed') #应用网速
+            items.append('network_all_speed')
+        items.insert(0, 'timestamp')
+        items.append('curActivity')
+        self._curIndex = len(items) - 1
+        if len(items) <= 1:
+            QMessageBox.warning(self, '警告!', '一项指标都没选!')
+            return
+        pkg = self._App__pkg_edit.text()
+        if not pkg:
+            QMessageBox.warning(self, '错误!', '请输入包名!')
+            return
+        serial = self._App__serial_edit.text()
+        data = (items, pkg, serial)
+        clearLayout(self._titleLayout)
+
+        self._size = len(items)
+        _windowSize = 130 * self._size
+        _windowSize = _windowSize if _windowSize > 500 else 500
+        self.resize(_windowSize, 500)
+        self.setWorkerLayout(items)
+        self.startThreads(data)
+
+    def setWorkerLayout(self, items):
+        self._titleLine = [F_NAMES[it] for it in items]
+        _hLayout = QHBoxLayout()
+        if self._export:
+            self.exportBtn = QPushButton('导出')
+            self.exportBtn.setEnabled(False)
+            self.exportBtn.clicked.connect(self.onExport)
+            _hLayout.addWidget(self.exportBtn)
+
+        self.clearBtn = QPushButton('清空')
+        self.clearBtn.clicked.connect(self.onClearModels)
+        _hLayout.addWidget(self.clearBtn)
+
+        self.exitBtn = QPushButton('停止')
+        self.exitBtn.clicked.connect(self.abortWorkers)
+        _hLayout.addWidget(self.exitBtn)
+
+        self.resetBtn = QPushButton('重置')
+        self.resetBtn.clicked.connect(self.onReset)
+        self.resetBtn.setEnabled(False)
+        _hLayout.addWidget(self.resetBtn)
+
+        _timeLayout = QHBoxLayout()
+        self._start_time = time.time()
+        self._startLabel = QLabel('开始 :' + time.strftime('%H:%M:%S', time.localtime()))
+        self._totalLabel = QLabel('总耗时 :')
+        self.startTotalLabel = QLabel('初始流量 :')
+        self.endTotalLabel = QLabel('总流量 :')
+        _timeLayout.addWidget(self._startLabel)
+        _timeLayout.addWidget(self._totalLabel)
+        _timeLayout.addWidget(self.startTotalLabel)
+        _timeLayout.addWidget(self.endTotalLabel)
+
+        groupBox = QGroupBox('性能')
+        self._treeView = QTreeView()
+        self._treeView.setObjectName('treeView')
+        self._treeView.setRootIsDecorated(True)
+        self._treeView.setAutoScroll(True)
+        self._treeView.setAlternatingRowColors(True)
+
+        tree_layout = QHBoxLayout()
+        tree_layout.addWidget(self._treeView)
+        groupBox.setLayout(tree_layout)
+        self._model = QStandardItemModel(0, self._size, self)
+        for index in range(self._size):
+            self._model.setHeaderData(index, Qt.Horizontal, F_NAMES[items[index]])
+
+        self._treeView.setModel(self._model)
+        self.setLayout(_hLayout)
+        self.setLayout(_timeLayout)
+        self.setLayout(groupBox)
+        if self._networkIndex > 0:
+            self.startTotalLabel.setText('初始流量 :0k')
+
+
+    def onReset(self):
+        self.onClearModels()
+        self.abortWorkers()
+        adb.cpuHasRun = False
+        clearLayout(self.layout)
+        self.resize(600, 200)
+        self.setOptionLayout()
+
+    def onClearModels(self):
+        if self._count == 0:
+            return
+        self._model.removeRows(0, self._count)
+        self._count = 0
+
+    def abortWorkers(self):
+        if self._export:
+            self.exportBtn.setEnabled(True)
+        self.clearBtn.setEnabled(False)
+        self.exitBtn.setEnabled(False)
+        self.resetBtn.setEnabled(True)
+        adb.cpuHasRun = False
+        total = time.time() - self._start_time
+        self._totalLabel.setText('总耗时 : %s' % utils.time2hms(int(total)))
+        if self._networkIndex > 0:
+            self.endTotalLabel.setText('总流量 : {}'.format(utils.kbFormat(self._lastTotal)))
+
+        self.worker.abort()
+        self.thread.quit()
+
+
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)  # qdarkstyle.load_stylesheet_pyqt5()
+    app.setWindowIcon(QIcon("./images/main48.ico"))
+    mainMindow = PerformnaceAppUi()
+    mainMindow.show()
+    sys.exit(app.exec_())
