@@ -12,7 +12,7 @@ import pickle, time
 CP = path.expanduser('~') + path.sep
 DEADLINE = 15552000
 VERSION = '1.2.1'
-DATE = '2020.3.25-15:57'
+DATE = '2020.5.27-15:57'
 DESCRIPTION = 'performance-jimmie-{}-{}'.format(VERSION, DATE).encode('utf-8')
 DEBUG = False
 
