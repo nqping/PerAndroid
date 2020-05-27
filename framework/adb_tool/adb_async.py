@@ -1,7 +1,10 @@
-# uncompyle6 version 3.6.5
-# Python bytecode 3.7 (3394)
-# Decompiled from: Python 3.7.3 (v3.7.3:ef4ec6ed12, Mar 25 2019, 22:22:05) [MSC v.1916 64 bit (AMD64)]
-# Embedded file name: adb_tool\adb_async.py
+#!/usr/bin/sh python
+# -*- coding: utf-8 -*-
+# @Time : 2020/5/15 10:01
+# @Author : qingping.niu
+# @File : adb_async.py
+# @Desc : 性能监控命令集
+
 import re, subprocess, time, threading,shlex
 import os
 from utils import utils
@@ -444,7 +447,7 @@ class Adb:
                                 r = re.search('\\s(\\S+)%user[\\s\\S]*\\s(\\S+)%sys', output)
                                 if r:
                                     # r = list(map(lambda it: float(it), r.groups()))
-                                    # self._props['total_cpu'] = '{}%'.format(sum(r)) #TODO 修改为获取已使用的所有cpu占用量
+                                    # self._props['total_cpu'] = '{}%'.format(sum(r))
                                     r = list(map(lambda it: float(it), r.groups()))
                                     total = sum(r) / self._Adb__cpu_count if self._Adb__cpu_count else sum(r)
                                     self._props['total_cpu'] = '{}%'.format(total)
