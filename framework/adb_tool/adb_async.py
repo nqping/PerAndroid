@@ -5,11 +5,11 @@
 # @File : adb_async.py
 # @Desc : 性能监控命令集
 
-import re, subprocess, time, threading,shlex
-import os
+import re, subprocess, time, threading
 from utils import utils
 import traceback
 from framework.support import identify
+
 ERROR_TAG = '!occur err!'
 
 def adbExec(args, **kwargs):
