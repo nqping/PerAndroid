@@ -10,7 +10,7 @@ import re
 
 def last2Index(source, prefix):
     """
-    to get last two indexs from string with prefix
+    从带前缀的字符串获取最后两个索引
     :param prefix: str
     :return: (lastStart,lastEnd)
     """
@@ -20,13 +20,10 @@ def last2Index(source, prefix):
 
     tmp_len = len(tmp_list)
     if tmp_len == 1:
-        return (
-         tmp_list[0] + len(prefix), len(source))
+        return (tmp_list[0] + len(prefix), len(source))
     if tmp_len == 0:
-        return (
-         0, len(source))
-    return (
-     tmp_list[(tmp_len - 2)] + len(prefix), tmp_list[(tmp_len - 1)])
+        return (0, len(source))
+    return (tmp_list[(tmp_len - 2)] + len(prefix), tmp_list[(tmp_len - 1)])
 
 
 def listFind(_list, item):
