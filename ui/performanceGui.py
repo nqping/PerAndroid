@@ -1,24 +1,21 @@
 #!/usr/bin/sh python
 # -*- coding: utf-8 -*-
-# @Time : 2020/5/15 10:01 
+# @Time : 2020/5/15 10:01
 # @Author : qingping.niu
-# @File : performanceGui.py 
+# @File : performanceGui.py
 # @Desc : 性能监控测试
 
 import time, sys
-from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
 from framework.adb_tool.adb_async import Adb
-from framework.adb_tool.excetion import *
-from utils import utils
+from framework.adb_tool.exception import *
 from tablib import Dataset
-import logging
+from framework.support import identify
+from utils import utils
 
-
-log = logging.getLogger('performance')
-
-
+remnant = identify.check('.pc')
 adb = Adb.create()
 CPU = 'cpu(%)'
 FPS = 'fps(ms)'
@@ -29,7 +26,6 @@ TEMPERATURE = '温度(℃)'
 TOTAL_MEMORY = '总内存(k)'
 TOTAL_CPU = '总CPU(%)'
 NETWORK_ALL = '网速(k/s)'
-COUNT = 10
 NAMES = {CPU: 'cpu',
  FPS: 'fps',
  MEMORY: 'memory',
@@ -53,12 +49,12 @@ F_NAMES = {'cpu':CPU,
  'curActivity':'当前页面',
  'total_memory':TOTAL_MEMORY,
  'total_cpu':TOTAL_CPU}
+COUNT = 10
 
 def trap_exc_during_debug(*args):
     print(args)
-    log.debug(args)
 
-sys.excepthook = trap_exc_during_debug #全局捕获未处理的异常
+sys.excepthook = trap_exc_during_debug
 
 def clearLayout(layout):
     while layout.count() > 0:
@@ -73,7 +69,7 @@ def clearLayout(layout):
 
 class Worker(QObject):
     """
-    必须从QObject派生，以便发出信号，将插槽连接到其他信号，并在QThread中操作。
+    Must derive from QObject in order to emit signals, connect slots to other signals, and operate in a QThread.
     """
     __module__ = __name__
     __qualname__ = 'Worker'
@@ -91,10 +87,10 @@ class Worker(QObject):
     @pyqtSlot()
     def work(self):
         """
-        假设这个工作方法工作了很长时间。在此期间，线程的
-        事件循环被阻塞，除非应用程序的processEvents()被调用:这将给出每个
-        线程(包括main)处理事件的机会，在本例中意味着处理信号
-        从GUI接收(例如abort)。
+        Pretend this worker method does work that takes a long time. During this time, the thread's
+        event loop is blocked, except if the application's processEvents() is called: this gives every
+        thread (incl. main) a chance to process events, which in this sample means processing signals
+        received from GUI (such as abort).
         """
         items, pkg, serial = self._Worker__data
         adb.serial = serial
@@ -138,7 +134,8 @@ class Worker(QObject):
         self._Worker__data = data
 
 
-class PerformnaceAppUi(QWidget):
+class App(QMainWindow):
+
     def __init__(self):
         super().__init__()
         self._options = {}
@@ -150,7 +147,29 @@ class PerformnaceAppUi(QWidget):
         self._export = None
         self._items = []
         self._last_adb_err_time = 0
-
+        _helpAction = QPushButton('帮助')
+        _helpAction.clicked.connect(self.onHelpClick)
+        _helpAction.setFlat(True)
+        _helpAction.setAutoFillBackground(True)
+        _palette = QPalette()
+        _palette.setColor(QPalette.ButtonText, QColor('#1E90FF'))
+        _palette.setColor(QPalette.Button, QColor('#DCDCDC'))
+        _helpAction.setPalette(_palette)
+        _aboutAction = QPushButton('关于')
+        _aboutAction.clicked.connect(self.onAboutClick)
+        _aboutAction.setFlat(True)
+        _aboutAction.setAutoFillBackground(True)
+        _palette = QPalette()
+        _palette.setColor(QPalette.ButtonText, QColor('#1E90FF'))
+        _palette.setColor(QPalette.Button, QColor('#DCDCDC'))
+        _aboutAction.setPalette(_palette)
+        self.toolbar = self.addToolBar('help')
+        self.toolbar.addWidget(_helpAction)
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(_aboutAction)
+        _widget = QWidget()
+        self.layout = QVBoxLayout(_widget)
+        self.setCentralWidget(_widget)
         self.resize(600, 200)
         self.setWindowTitle('性能监控')
         self.setOptionLayout()
@@ -170,12 +189,36 @@ class PerformnaceAppUi(QWidget):
         btn = QPushButton('开始')
         btn.clicked.connect(self.onStart)
         self._titleLayout.addWidget(btn)
-        self.setLayout(self._titleLayout)
+        self.layout.addLayout(self._titleLayout)
+
+    def check(self):
+        print('Checking...')
+        if not remnant:
+            QMessageBox.warning(self, '警告:软件到期!', '请关注微信公众号 "测试一般不一般" ，\n进行软件更新，谢谢~')
+            self.close()
+            sys.exit(1)
+        print('OK...')
+
+    def onHelpClick(self):
+        QMessageBox.information(self, '帮助', '请关注微信公众号: "测试一般不一般" ,\n查看性能监控工具使用测试说明~')
+
+    def onAboutClick(self):
+        QMessageBox.information(self, '关于', '版本号 : {}\n日期 : {}'.format(identify.VERSION, identify.DATE))
+
+    def onNetworkChanged(self, state):
+        if state == Qt.Checked:
+            self._netType = '_local'
+        else:
+            self._netType = '_wifi'
+
+    def onExportChanged(self, state):
+        self._export = state
 
     def newInput(self):
         layout = QHBoxLayout()
         self._App__pkg_edit = QLineEdit()
         self._App__pkg_edit.setPlaceholderText('包名')
+        self._App__pkg_edit.setText('com.tct.launcher')
         self._App__serial_edit = QLineEdit()
         self._App__serial_edit.setPlaceholderText('设备号(单设备,可不输)')
         layout.addWidget(self._App__pkg_edit)
@@ -194,22 +237,13 @@ class PerformnaceAppUi(QWidget):
         layout.addWidget(btn2)
         self._titleLayout.addLayout(layout)
 
-    def onNetworkCheck(self, pressed):
-        source = self.sender()
-        name = NAMES[source.text()]
-        self._options[name] = pressed
-
-    def onExportChanged(self, state):
-        self._export = state
-
     def onStart(self):
         items = [k if k != 'network' else k + self._netType for k, v in self._options.items() if v]
         _it = 'network' + self._netType
         self._networkIndex = utils.listFind(items, _it) + 1
-        print(self._networkIndex)
         self._fpsIndex = utils.listFind(items, 'fps') + 1
         if self._networkIndex > 0:
-            items.append(_it + '_speed') #应用网速
+            items.append(_it + '_speed')
             items.append('network_all_speed')
         items.insert(0, 'timestamp')
         items.append('curActivity')
@@ -219,18 +253,30 @@ class PerformnaceAppUi(QWidget):
             return
         pkg = self._App__pkg_edit.text()
         if not pkg:
-            QMessageBox.warning(self, '错误!', '请输入包名!')
+            QMessageBox.warning(self, '错误!', '包名没有传入!')
             return
         serial = self._App__serial_edit.text()
         data = (items, pkg, serial)
         clearLayout(self._titleLayout)
-
         self._size = len(items)
         _windowSize = 130 * self._size
         _windowSize = _windowSize if _windowSize > 500 else 500
         self.resize(_windowSize, 500)
         self.setWorkerLayout(items)
         self.startThreads(data)
+
+    def onReset(self):
+        self.onClearModels()
+        self.abortWorkers()
+        adb.cpuHasRun = False
+        clearLayout(self.layout)
+        self.resize(600, 200)
+        self.setOptionLayout()
+
+    def onNetworkCheck(self, pressed):
+        source = self.sender()
+        name = NAMES[source.text()]
+        self._options[name] = pressed
 
     def setWorkerLayout(self, items):
         self._titleLine = [F_NAMES[it] for it in items]
@@ -260,13 +306,11 @@ class PerformnaceAppUi(QWidget):
         _timeLayout.addWidget(self._totalLabel)
         _timeLayout.addWidget(self.startTotalLabel)
         _timeLayout.addWidget(self.endTotalLabel)
-
         groupBox = QGroupBox('性能')
         self._treeView = QTreeView()
         self._treeView.setRootIsDecorated(True)
         self._treeView.setAutoScroll(True)
         self._treeView.setAlternatingRowColors(True)
-
         tree_layout = QHBoxLayout()
         tree_layout.addWidget(self._treeView)
         groupBox.setLayout(tree_layout)
@@ -275,13 +319,55 @@ class PerformnaceAppUi(QWidget):
             self._model.setHeaderData(index, Qt.Horizontal, F_NAMES[items[index]])
 
         self._treeView.setModel(self._model)
-        self.setLayout(_hLayout)
-        self.setLayout(_timeLayout)
-        # self.layout.addWidget(groupBox)
-        _hLayout.addWidget(groupBox)
-
+        self.layout.addLayout(_hLayout)
+        self.layout.addLayout(_timeLayout)
+        self.layout.addWidget(groupBox)
         if self._networkIndex > 0:
             self.startTotalLabel.setText('初始流量 :0k')
+
+    def onClearModels(self):
+        if self._count == 0:
+            return
+        self._model.removeRows(0, self._count)
+        self._count = 0
+
+    def onExport(self):
+        try:
+            data = Dataset(*self._items, **{'headers': self._titleLine})
+            fileName = time.strftime('%m-%d-%H_%M_%S', time.localtime()) + '-performance.xls'
+            with open(fileName, 'wb') as (f):
+                f.write(data.export('xls'))
+                QMessageBox.information(self, '导出成功!', 'Excel文件名为' + fileName)
+        except Exception as err:
+            try:
+                QMessageBox.warning(self, '导出异常!', str(err))
+            finally:
+                err = None
+                del err
+
+    def addModel(self, items):
+        if self._count > 100:
+            self.onClearModels()
+        else:
+            if self._networkIndex > 0:
+                self._lastTotal = items[self._networkIndex]
+                items[self._networkIndex] = utils.number_format(items[self._networkIndex])
+            self._model.insertRow(self._count)
+            for index in range(self._size):
+                self._model.setData(self._model.index(self._count, index), items[index])
+
+            if self._fpsIndex > 0:
+                if float(items[self._fpsIndex] > 16.66):
+                    self._model.item(self._count, self._fpsIndex).setForeground(QBrush(QColor(255, 0, 0)))
+            if not items[self._curIndex].startswith(';'):
+                self._model.item(self._count, self._curIndex).setForeground(QBrush(QColor(255, 0, 0)))
+                items[self._curIndex] += '(out)'
+            else:
+                items[self._curIndex] = items[self._curIndex].replace(';', '')
+                self._model.setData(self._model.index(self._count, self._curIndex), items[self._curIndex])
+        self._items.append(items)
+        self._count += 1
+        self._treeView.scrollToBottom()
 
     def startThreads(self, data):
         worker = Worker(1)
@@ -303,21 +389,6 @@ class PerformnaceAppUi(QWidget):
     def onWorkerStep(self, items: list):
         self.addModel(items)
 
-
-    def onReset(self):
-        self.onClearModels()
-        self.abortWorkers()
-        adb.cpuHasRun = False
-        clearLayout(self.layout)
-        self.resize(600, 200)
-        self.setOptionLayout()
-
-    def onClearModels(self):
-        if self._count == 0:
-            return
-        self._model.removeRows(0, self._count)
-        self._count = 0
-
     def abortWorkers(self):
         if self._export:
             self.exportBtn.setEnabled(True)
@@ -329,7 +400,6 @@ class PerformnaceAppUi(QWidget):
         self._totalLabel.setText('总耗时 : %s' % utils.time2hms(int(total)))
         if self._networkIndex > 0:
             self.endTotalLabel.setText('总流量 : {}'.format(utils.kbFormat(self._lastTotal)))
-
         self.worker.abort()
         self.thread.quit()
 
@@ -341,26 +411,11 @@ class PerformnaceAppUi(QWidget):
         if reply == QMessageBox.Yes:
             self._message_box_count -= 1
 
-    def onExport(self):
-        try:
-            data = Dataset(*self._items, **{'headers': self._titleLine})
-            fileName = time.strftime('%m-%d-%H_%M_%S', time.localtime()) + '-performance.xls'
-            with open(fileName, 'wb') as (f):
-                f.write(data.export('xls'))
-                QMessageBox.information(self, '导出成功!', 'Excel文件名为' + fileName)
-        except Exception as err:
-            try:
-                QMessageBox.warning(self, '导出异常!', str(err))
-            finally:
-                err = None
-                del err
-
-
-
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)  # qdarkstyle.load_stylesheet_pyqt5()
-    app.setWindowIcon(QIcon("./images/main48.ico"))
-    mainMindow = PerformnaceAppUi()
-    mainMindow.show()
+    app = QApplication([])
+    form = App()
+    form.show()
+    if not identify.DEBUG:
+        form.check()
     sys.exit(app.exec_())
