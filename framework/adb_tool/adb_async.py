@@ -163,7 +163,7 @@ class Adb:
 
         try:
             shell(['dumpsys', 'battery'], serial=(self.serial), callback=callback)
-            print('battery', self._props['battery'], self._props['temperature'])
+            # print('battery', self._props['battery'], self._props['temperature'])
             return (
              self._props['battery'], self._props['temperature'])
         except Exception as err:
@@ -465,7 +465,7 @@ class Adb:
                                 for i in range(len(arr)):
                                     if 'CPU' in arr[i]:
                                         self._Adb__cpu_index = i
-                                        print('self._Adb__cpu_index==%s'%self._Adb__cpu_index)
+                                        # print('self._Adb__cpu_index==%s'%self._Adb__cpu_index)
                                         self._Adb__has_cpu_index = True
                                     if 'RSS' in arr[i]:
                                         self._Adb__memory_index = i-1 if is_up_8_0 else i
@@ -473,7 +473,11 @@ class Adb:
                         else:
                             if pkg in output:
                                 arr = output.split()
-                                pkg_cpu += float(arr[self._Adb__cpu_index].replace('%', ''))
+                                _cpu = float(arr[self._Adb__cpu_index]) / self._Adb__cpu_count if self._Adb__cpu_count else arr[self._Adb__cpu_index]
+                                # print('{},{}'.format(pkg_cpu,_cpu))
+                                pkg_cpu += _cpu
+                                # print(pkg_cpu)
+                                # pkg_cpu += float(arr[self._Adb__cpu_index].replace('%', ''))
                                 self._props['cpu']='{}%'.format(pkg_cpu)
                 self.cpuHasRun = False
                 p.stdout.close()
