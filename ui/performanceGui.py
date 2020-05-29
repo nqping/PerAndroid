@@ -7,8 +7,10 @@
 
 import time, sys
 from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import QLayout, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QCheckBox, QMainWindow, QLineEdit, QMessageBox, QGroupBox, QTreeView, QApplication, QLabel
 from PyQt5.QtGui import *
+from qtpy import QtGui
+
 from framework.adb_tool.adb_async import Adb
 from framework.adb_tool.exception import *
 from tablib import Dataset
@@ -146,6 +148,7 @@ class App(QMainWindow):
         self._lastTotal = 0
         self._export = None
         self._items = []
+        self._model=[]
         self._last_adb_err_time = 0
         _helpAction = QPushButton('帮助')
         _helpAction.clicked.connect(self.onHelpClick)
@@ -328,7 +331,7 @@ class App(QMainWindow):
     def onClearModels(self):
         if self._count == 0:
             return
-        self._model.removeRows(0, self._count)
+        self._model.removeRows(0,self._count)
         self._count = 0
 
     def onExport(self):
@@ -346,25 +349,27 @@ class App(QMainWindow):
                 del err
 
     def addModel(self, items):
-        if self._count > 100:
-            self.onClearModels()
-        else:
-            if self._networkIndex > 0:
-                self._lastTotal = items[self._networkIndex]
-                items[self._networkIndex] = utils.number_format(items[self._networkIndex])
-            self._model.insertRow(self._count)
-            for index in range(self._size):
-                self._model.setData(self._model.index(self._count, index), items[index])
+        # if self._count > 5:
+        #     self.onClearModels()
+        # else:
+        if self._networkIndex > 0:
+            self._lastTotal = items[self._networkIndex]
+            items[self._networkIndex] = utils.number_format(items[self._networkIndex])
+        self._model.insertRow(self._count)
 
-            if self._fpsIndex > 0:
-                if float(items[self._fpsIndex] > 16.66):
-                    self._model.item(self._count, self._fpsIndex).setForeground(QBrush(QColor(255, 0, 0)))
-            if not items[self._curIndex].startswith(';'):
-                self._model.item(self._count, self._curIndex).setForeground(QBrush(QColor(255, 0, 0)))
-                items[self._curIndex] += '(out)'
-            else:
-                items[self._curIndex] = items[self._curIndex].replace(';', '')
-                self._model.setData(self._model.index(self._count, self._curIndex), items[self._curIndex])
+        for index in range(self._size):
+            self._model.setData(self._model.index(self._count, index), items[index])
+        self._model.insertRow(self._count)
+        if self._fpsIndex > 0:
+            if float(items[self._fpsIndex] > 16.66):
+                self._model.item(self._count, self._fpsIndex).setForeground(QBrush(QColor(255, 0, 0)))
+
+        if not items[self._curIndex].startswith(';'):
+            self._model.item(self._count, self._curIndex).setForeground(QBrush(QColor(255, 0, 0)))
+            items[self._curIndex] += '(out)'
+        else:
+            items[self._curIndex] = items[self._curIndex].replace(';', '')
+            self._model.setData(self._model.index(self._count, self._curIndex), items[self._curIndex])
         self._items.append(items)
         self._count += 1
         self._treeView.scrollToBottom()
@@ -419,3 +424,4 @@ if __name__ == '__main__':
     if not identify.DEBUG:
         form.check()
     sys.exit(app.exec_())
+
