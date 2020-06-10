@@ -221,7 +221,7 @@ class App(QMainWindow):
         layout = QHBoxLayout()
         self._App__pkg_edit = QLineEdit()
         self._App__pkg_edit.setPlaceholderText('包名')
-        self._App__pkg_edit.setText('com.tct.launcher')
+        self._App__pkg_edit.setText('com.tct.launcher')#com.tct.live
         self._App__serial_edit = QLineEdit()
         self._App__serial_edit.setPlaceholderText('设备号(单设备,可不输)')
         layout.addWidget(self._App__pkg_edit)
@@ -349,21 +349,19 @@ class App(QMainWindow):
                 del err
 
     def addModel(self, items):
-        # if self._count > 5:
+        # if self._count > 1000:
         #     self.onClearModels()
         # else:
         if self._networkIndex > 0:
             self._lastTotal = items[self._networkIndex]
             items[self._networkIndex] = utils.number_format(items[self._networkIndex])
         self._model.insertRow(self._count)
-
         for index in range(self._size):
             self._model.setData(self._model.index(self._count, index), items[index])
-        self._model.insertRow(self._count)
+
         if self._fpsIndex > 0:
             if float(items[self._fpsIndex] > 16.66):
                 self._model.item(self._count, self._fpsIndex).setForeground(QBrush(QColor(255, 0, 0)))
-
         if not items[self._curIndex].startswith(';'):
             self._model.item(self._count, self._curIndex).setForeground(QBrush(QColor(255, 0, 0)))
             items[self._curIndex] += '(out)'
